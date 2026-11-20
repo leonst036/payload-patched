@@ -11,7 +11,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:generate": "drizzle-kit generate",
-    "auth:reset-password": "tsx scripts/reset-password.ts"
+    "auth:reset-password": "tsx scripts/reset-password.ts",
+    "auth:check-password": "tsx scripts/check-password.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

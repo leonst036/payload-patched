@@ -16,6 +16,9 @@ const drizzleAdapter = DrizzleAdapter(db, {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: drizzleAdapter as Adapter,
+  session: {
+    strategy: "jwt",
+  },
   providers: [
     Credentials({
       name: "Username and password",
@@ -55,4 +58,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.username =
+          "username" in user && typeof user.username === "string"
+            ? user.username
+            : null;
+        token.isAdmin =
+          "isAdmin" in user && typeof user.isAdmin === "boolean"
+            ? user.isAdmin
+            : false;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id =
+          typeof token.id === "string"
+            ? token.id
+            : typeof token.sub === "string"
+              ? token.sub
+              : "";
+        (session.user as typeof session.user & {
+          username?: string | null;
+          isAdmin?: boolean;
+        }).username =
+          typeof token.username === "string" ? token.username : null;
+        (session.user as typeof session.user & {
+          username?: string | null;
+          isAdmin?: boolean;
+        }).isAdmin =
+          typeof token.isAdmin === "boolean" ? token.isAdmin : false;
+      }
+      return session;
+    },
+  },
 })
