@@ -301,7 +301,7 @@ SQL
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i '/^host .*${ENV[POSTGRES_USER]} /d' /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host ${ENV[POSTGRES_DB]} ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
-    pve_exec pct exec "$PG_CT_ID" -- bash -c 'pg_ctlcluster 17 main restart'
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'pg_ctlcluster 17 main reload || pg_ctlcluster 17 main restart'
     if ! pve_exec pct exec "$PG_CT_ID" -- bash -c 'for i in $(seq 1 30); do pg_isready -q -h 127.0.0.1 -p 5432 && exit 0; sleep 1; done; exit 1'; then
       echo "PostgreSQL in CT $PG_CT_ID did not become ready." >&2
       pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl status postgresql --no-pager || true'
