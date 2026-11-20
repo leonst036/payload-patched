@@ -298,8 +298,15 @@ SQL
     pg_setup_b64="$(printf '%s' "$pg_setup_sql" | base64 | tr -d '\n')"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo '$pg_setup_b64' | base64 -d | runuser -u postgres -- psql -v ON_ERROR_STOP=1"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
-    pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host all ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i '/^host .*${ENV[POSTGRES_USER]} /d' /etc/postgresql/*/main/pg_hba.conf"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host ${ENV[POSTGRES_DB]} ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl restart postgresql'
+    if ! pve_exec pct exec "$PG_CT_ID" -- bash -c 'for i in $(seq 1 30); do pg_isready -q && exit 0; sleep 1; done; exit 1'; then
+      echo "PostgreSQL in CT $PG_CT_ID did not become ready." >&2
+      pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl status postgresql --no-pager || true'
+      exit 1
+    fi
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "PGPASSWORD='${ENV[POSTGRES_PASSWORD]}' psql -h 127.0.0.1 -U '${ENV[POSTGRES_USER]}' -d '${ENV[POSTGRES_DB]}' -tAc 'SELECT 1' | grep -q 1"
 
     echo "Creating Redis CT..."
     create_ct "$REDIS_CT_ID" "payload-redis" "$REDIS_IP"
@@ -496,6 +503,18 @@ if confirm "Apply database migrations?" "y"; then
   set -a
   source "$ENV_FILE"
   set +a
+  if [[ "$DB_MODE" == "2" ]]; then
+    if [[ "$DATABASE_URL" =~ @([^:/]+)(:[0-9]+)?/ ]]; then
+      db_host="${BASH_REMATCH[1]}"
+      echo "Checking PostgreSQL connectivity to $db_host:5432..."
+      if ! timeout 10 bash -c "exec 3<>/dev/tcp/$db_host/5432" 2>/dev/null; then
+        echo "Cannot reach PostgreSQL at $db_host:5432 from the Payload VM." >&2
+        echo "Check the CT IP, VM network mode, bridge/VLAN, firewall, and UFW rules." >&2
+        exit 1
+      fi
+      echo "PostgreSQL port is reachable."
+    fi
+  fi
   pnpm db:migrate
 fi
 
