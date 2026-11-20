@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+trap 'status=$?; if [[ $status -ne 0 ]]; then echo "Installer stopped unexpectedly (exit $status)." >&2; fi' EXIT
+
 if [[ ! -t 0 ]]; then
   echo "This installer is interactive and requires a terminal." >&2
   exit 1
@@ -37,7 +39,7 @@ prompt_secret() {
   local default="${2:-}"
   local value
   read -r -s -p "$label: " value
-  echo
+  echo >&2
   printf '%s' "${value:-$default}"
 }
 
@@ -92,8 +94,20 @@ case "$DB_MODE" in
     echo "Proxmox access credentials"
     ENV[PROXMOX_HOST]="$(prompt_required "Proxmox host (IP or hostname)")"
     ENV[PROXMOX_PORT]="$(prompt "PROXMOX_PORT" "8006")"
-    ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
-    ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+    while true; do
+      ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
+      if [[ "${ENV[PROXMOX_TOKEN_ID]}" =~ ^[^@[:space:]]+@[^![:space:]]+![^[:space:]]+$ ]]; then
+        break
+      fi
+      echo "Invalid token ID. Use the full format user@realm!token-name." >&2
+    done
+    while true; do
+      ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+      if [[ -n "${ENV[PROXMOX_TOKEN_SECRET]}" ]]; then
+        break
+      fi
+      echo "Proxmox API token secret cannot be blank." >&2
+    done
     ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
     ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
     ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
@@ -120,7 +134,8 @@ case "$DB_MODE" in
     }
 
     if ! pve_exec true >/dev/null 2>&1; then
-      echo "Could not connect to the Proxmox host over SSH." >&2
+      echo "Could not connect to ${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]} over SSH." >&2
+      echo "Check PROXMOX_SSH_HOST, port, user, key path, or password." >&2
       exit 1
     fi
 
@@ -207,8 +222,20 @@ ENV[AUTH_SECRET]="$(prompt_secret "AUTH_SECRET" "$(random_secret)")"
 if [[ "$DB_MODE" != "2" ]]; then
   ENV[PROXMOX_HOST]="$(prompt_required "Proxmox host (IP or hostname)")"
   ENV[PROXMOX_PORT]="$(prompt "PROXMOX_PORT" "8006")"
-  ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
-  ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+  while true; do
+    ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
+    if [[ "${ENV[PROXMOX_TOKEN_ID]}" =~ ^[^@[:space:]]+@[^![:space:]]+![^[:space:]]+$ ]]; then
+      break
+    fi
+    echo "Invalid token ID. Use the full format user@realm!token-name." >&2
+  done
+  while true; do
+    ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+    if [[ -n "${ENV[PROXMOX_TOKEN_SECRET]}" ]]; then
+      break
+    fi
+    echo "Proxmox API token secret cannot be blank." >&2
+  done
   ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
   ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
   ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
