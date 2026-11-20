@@ -89,8 +89,38 @@ case "$DB_MODE" in
     ENV[REDIS_URL]="redis://:${ENV[REDIS_PASSWORD]}@localhost:6379"
     ;;
   2)
-    if ! command -v pct >/dev/null 2>&1; then
-      echo "Proxmox CT mode must be run on the Proxmox host." >&2
+    echo "Proxmox access credentials"
+    ENV[PROXMOX_HOST]="$(prompt_required "Proxmox host (IP or hostname)")"
+    ENV[PROXMOX_PORT]="$(prompt "PROXMOX_PORT" "8006")"
+    ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
+    ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+    ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
+    ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
+    ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
+    ENV[PROXMOX_SSH_HOST]="$(prompt "PROXMOX_SSH_HOST" "${ENV[PROXMOX_HOST]}")"
+    ENV[PROXMOX_SSH_USER]="$(prompt "PROXMOX_SSH_USER" "root")"
+    ENV[PROXMOX_SSH_KEY_PATH]="$(prompt "PROXMOX_SSH_KEY_PATH (leave blank for password auth)" "")"
+    ENV[PROXMOX_SSH_PASSWORD]="$(prompt_secret "PROXMOX_SSH_PASSWORD (leave blank for key auth)" "")"
+    ENV[PROXMOX_SSH_PORT]="$(prompt "PROXMOX_SSH_PORT" "22")"
+
+    pve_exec() {
+      local ssh_args=(-p "${ENV[PROXMOX_SSH_PORT]}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+      if [[ -n "${ENV[PROXMOX_SSH_KEY_PATH]}" ]]; then
+        ssh_args+=(-i "${ENV[PROXMOX_SSH_KEY_PATH]}")
+        ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+      elif [[ -n "${ENV[PROXMOX_SSH_PASSWORD]}" ]]; then
+        if ! command -v sshpass >/dev/null 2>&1; then
+          echo "sshpass is required for Proxmox SSH password authentication." >&2
+          exit 1
+        fi
+        sshpass -p "${ENV[PROXMOX_SSH_PASSWORD]}" ssh -p "${ENV[PROXMOX_SSH_PORT]}" -o StrictHostKeyChecking=accept-new "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+      else
+        ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+      fi
+    }
+
+    if ! pve_exec true >/dev/null 2>&1; then
+      echo "Could not connect to the Proxmox host over SSH." >&2
       exit 1
     fi
 
@@ -109,8 +139,8 @@ case "$DB_MODE" in
     CT_GATEWAY="$(prompt_required "Network gateway")"
     CT_ROOT_PASSWORD="$(prompt_secret "Temporary CT root password" "$(random_secret)")"
 
-    if [[ ! -f "$CT_TEMPLATE" ]]; then
-      echo "CT template not found: $CT_TEMPLATE" >&2
+    if ! pve_exec test -f "$CT_TEMPLATE"; then
+      echo "CT template not found on Proxmox: $CT_TEMPLATE" >&2
       echo "Download one with: pveam update && pveam available" >&2
       exit 1
     fi
@@ -119,7 +149,7 @@ case "$DB_MODE" in
       local id="$1"
       local hostname="$2"
       local ip="$3"
-      pct create "$id" "$CT_TEMPLATE" \
+      pve_exec pct create "$id" "$CT_TEMPLATE" \
         --hostname "$hostname" \
         --cores 2 --memory 2048 --swap 512 \
         --rootfs "$CT_STORAGE:8" \
@@ -127,9 +157,9 @@ case "$DB_MODE" in
         --password "$CT_ROOT_PASSWORD" \
         --unprivileged 1 --features nesting=1 \
         --onboot 1
-      pct start "$id"
+      pve_exec pct start "$id"
       for _ in {1..30}; do
-        pct exec "$id" -- true >/dev/null 2>&1 && return
+        pve_exec pct exec "$id" -- true >/dev/null 2>&1 && return
         sleep 1
       done
       echo "CT $id did not start in time." >&2
@@ -138,26 +168,26 @@ case "$DB_MODE" in
 
     echo "Creating PostgreSQL CT..."
     create_ct "$PG_CT_ID" "payload-postgres" "$PG_IP"
-    pct exec "$PG_CT_ID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib'
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib'
 
     local_pg_ip="${PG_IP%%/*}"
     pg_sql_password="${ENV[POSTGRES_PASSWORD]//\'/\'\'}"
-    pct exec "$PG_CT_ID" -- bash -c "runuser -u postgres -- psql -v ON_ERROR_STOP=1 <<'SQL'
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "runuser -u postgres -- psql -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE ${ENV[POSTGRES_USER]} WITH LOGIN PASSWORD '${pg_sql_password}' ;
 CREATE DATABASE ${ENV[POSTGRES_DB]} OWNER ${ENV[POSTGRES_USER]};
 SQL
 "
-    pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
-    pct exec "$PG_CT_ID" -- bash -c "echo 'host all ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
-    pct exec "$PG_CT_ID" -- bash -c 'systemctl restart postgresql'
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host all ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl restart postgresql'
 
     echo "Creating Redis CT..."
     create_ct "$REDIS_CT_ID" "payload-redis" "$REDIS_IP"
-    pct exec "$REDIS_CT_ID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server'
-    pct exec "$REDIS_CT_ID" -- bash -c "sed -i 's/^bind .*/bind 0.0.0.0/' /etc/redis/redis.conf"
-    pct exec "$REDIS_CT_ID" -- bash -c "sed -i 's/^protected-mode .*/protected-mode no/' /etc/redis/redis.conf"
-    pct exec "$REDIS_CT_ID" -- bash -c "echo \"requirepass ${ENV[REDIS_PASSWORD]}\" >> /etc/redis/redis.conf"
-    pct exec "$REDIS_CT_ID" -- bash -c 'systemctl restart redis-server'
+    pve_exec pct exec "$REDIS_CT_ID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y redis-server'
+    pve_exec pct exec "$REDIS_CT_ID" -- bash -c "sed -i 's/^bind .*/bind 0.0.0.0/' /etc/redis/redis.conf"
+    pve_exec pct exec "$REDIS_CT_ID" -- bash -c "sed -i 's/^protected-mode .*/protected-mode no/' /etc/redis/redis.conf"
+    pve_exec pct exec "$REDIS_CT_ID" -- bash -c "echo \"requirepass ${ENV[REDIS_PASSWORD]}\" >> /etc/redis/redis.conf"
+    pve_exec pct exec "$REDIS_CT_ID" -- bash -c 'systemctl restart redis-server'
 
     db_password_url="$(printf '%s' "${ENV[POSTGRES_PASSWORD]}" | sed 's/%/%25/g;s/@/%40/g;s/:/%3A/g;s/#/%23/g;s/[/]/%2F/g')"
     ENV[DATABASE_URL]="postgres://${ENV[POSTGRES_USER]}:${db_password_url}@${local_pg_ip}:5432/${ENV[POSTGRES_DB]}"
@@ -174,19 +204,21 @@ SQL
 esac
 
 ENV[AUTH_SECRET]="$(prompt_secret "AUTH_SECRET" "$(random_secret)")"
-ENV[PROXMOX_HOST]="$(prompt_required "Proxmox host (IP or hostname)")"
-ENV[PROXMOX_PORT]="$(prompt "PROXMOX_PORT" "8006")"
-ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
-ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
-ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
-ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
-ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
+if [[ "$DB_MODE" != "2" ]]; then
+  ENV[PROXMOX_HOST]="$(prompt_required "Proxmox host (IP or hostname)")"
+  ENV[PROXMOX_PORT]="$(prompt "PROXMOX_PORT" "8006")"
+  ENV[PROXMOX_TOKEN_ID]="$(prompt_required "Proxmox full API token ID (for example payload@pve!payload)")"
+  ENV[PROXMOX_TOKEN_SECRET]="$(prompt_secret "Proxmox API token secret")"
+  ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
+  ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
+  ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
 
-ENV[PROXMOX_SSH_HOST]="$(prompt "PROXMOX_SSH_HOST (leave blank for no SSH)" "")"
-ENV[PROXMOX_SSH_USER]="$(prompt "PROXMOX_SSH_USER" "root")"
-ENV[PROXMOX_SSH_KEY_PATH]="$(prompt "PROXMOX_SSH_KEY_PATH" "")"
-ENV[PROXMOX_SSH_PASSWORD]="$(prompt_secret "PROXMOX_SSH_PASSWORD (leave blank for key auth)" "")"
-ENV[PROXMOX_SSH_PORT]="$(prompt "PROXMOX_SSH_PORT" "22")"
+  ENV[PROXMOX_SSH_HOST]="$(prompt "PROXMOX_SSH_HOST" "${ENV[PROXMOX_HOST]}")"
+  ENV[PROXMOX_SSH_USER]="$(prompt "PROXMOX_SSH_USER" "root")"
+  ENV[PROXMOX_SSH_KEY_PATH]="$(prompt "PROXMOX_SSH_KEY_PATH (leave blank for password auth)" "")"
+  ENV[PROXMOX_SSH_PASSWORD]="$(prompt_secret "PROXMOX_SSH_PASSWORD (leave blank for key auth)" "")"
+  ENV[PROXMOX_SSH_PORT]="$(prompt "PROXMOX_SSH_PORT" "22")"
+fi
 
 ENV[GUACAMOLE_BASE_URL]="$(prompt "GUACAMOLE_BASE_URL" "http://localhost:8080/guacamole")"
 ENV[GUACAMOLE_PUBLIC_BASE_URL]="$(prompt "GUACAMOLE_PUBLIC_BASE_URL" "http://localhost:8080/guacamole")"
