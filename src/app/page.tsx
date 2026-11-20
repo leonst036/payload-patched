@@ -70,7 +70,7 @@ export default async function Dashboard() {
                 action={async (formData: FormData) => {
                   "use server";
                   await signIn("credentials", {
-                    username: String(formData.get("username") ?? "").trim(),
+                    username: String(formData.get("username") ?? "").trim().toLowerCase(),
                     password: String(formData.get("password") ?? ""),
                     redirectTo: "/",
                   });

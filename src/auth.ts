@@ -24,22 +24,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const username = typeof credentials.username === "string" ? credentials.username.trim() : "";
+        const username = typeof credentials.username === "string" ? credentials.username.trim().toLowerCase() : "";
         const password = typeof credentials.password === "string" ? credentials.password : "";
         if (!username || !password) return null;
 
-        const user = await db.query.users.findFirst({
-          where: eq(schema.users.username, username),
-        });
-        if (!user?.passwordHash || !(await verifyPassword(password, user.passwordHash))) return null;
+        try {
+          const user = await db.query.users.findFirst({
+            where: eq(schema.users.username, username),
+          });
+          if (!user?.passwordHash) {
+            console.warn(`[auth] unknown username: ${username}`);
+            return null;
+          }
+          if (!(await verifyPassword(password, user.passwordHash))) {
+            console.warn(`[auth] password mismatch for username: ${username}`);
+            return null;
+          }
 
-        return {
-          id: user.id,
-          name: user.name ?? user.username,
-          image: user.image,
-          username: user.username,
-          isAdmin: user.isAdmin,
-        };
+          return {
+            id: user.id,
+            name: user.name ?? user.username,
+            image: user.image,
+            username: user.username,
+            isAdmin: user.isAdmin,
+          };
+        } catch (error) {
+          console.error("[auth] credentials authorization failed", error);
+          return null;
+        }
       },
     }),
   ],

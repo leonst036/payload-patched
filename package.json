@@ -10,7 +10,8 @@
     "payload": "tsx scripts/payload.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "auth:reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
