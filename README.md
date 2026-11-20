@@ -52,7 +52,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Interactive installer
 
-Run the installer to configure all required environment variables and choose where PostgreSQL and Redis run:
+Run the installer to configure all required environment variables and choose where PostgreSQL and Redis run (run it in the vm where payload should be installed):
 
 ```bash
 bash scripts/install.sh
