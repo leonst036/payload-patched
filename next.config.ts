@@ -38,6 +38,11 @@ function resolveGitSha(): string {
 }
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.55.183",
+  ],
   env: {
     GIT_COMMIT_SHA: resolveGitSha(),
   },
