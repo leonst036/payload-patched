@@ -277,6 +277,7 @@ case "$DB_MODE" in
     create_ct "$PG_CT_ID" "payload-postgres" "$PG_IP"
     pve_exec pct exec "$PG_CT_ID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql postgresql-contrib locales'
     pve_exec pct exec "$PG_CT_ID" -- bash -c 'sed -i "s/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/" /etc/locale.gen && locale-gen en_US.UTF-8'
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'pg_dropcluster --stop 17 main >/dev/null 2>&1 || true; pg_createcluster 17 main --locale=en_US.UTF-8 --encoding=UTF8 --start'
 
     local_pg_ip="${PG_IP%%/*}"
     pg_sql_password="${ENV[POSTGRES_PASSWORD]//\'/\'\'}"
@@ -300,8 +301,8 @@ SQL
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i '/^host .*${ENV[POSTGRES_USER]} /d' /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host ${ENV[POSTGRES_DB]} ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
-    pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl restart postgresql'
-    if ! pve_exec pct exec "$PG_CT_ID" -- bash -c 'for i in $(seq 1 30); do pg_isready -q && exit 0; sleep 1; done; exit 1'; then
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'pg_ctlcluster 17 main restart'
+    if ! pve_exec pct exec "$PG_CT_ID" -- bash -c 'for i in $(seq 1 30); do pg_isready -q -h 127.0.0.1 -p 5432 && exit 0; sleep 1; done; exit 1'; then
       echo "PostgreSQL in CT $PG_CT_ID did not become ready." >&2
       pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl status postgresql --no-pager || true'
       exit 1
