@@ -169,12 +169,15 @@ case "$DB_MODE" in
         "$@"
         return
       fi
+      local remote_command
+      printf -v remote_command '%q ' "$@"
+      remote_command="${remote_command% }"
       local ssh_args=(-p "${ENV[PROXMOX_SSH_PORT]}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
       if [[ -n "${ENV[PROXMOX_SSH_KEY_PATH]}" ]]; then
         ssh_args+=(-i "${ENV[PROXMOX_SSH_KEY_PATH]}")
-        ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+        ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$remote_command"
       elif [[ -n "${ENV[PROXMOX_SSH_PASSWORD]}" ]]; then
-        sshpass -p "${ENV[PROXMOX_SSH_PASSWORD]}" ssh -p "${ENV[PROXMOX_SSH_PORT]}" -o StrictHostKeyChecking=accept-new "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+        sshpass -p "${ENV[PROXMOX_SSH_PASSWORD]}" ssh -p "${ENV[PROXMOX_SSH_PORT]}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$remote_command"
       else
         echo "No Proxmox SSH authentication method is configured." >&2
         return 1
@@ -188,7 +191,15 @@ case "$DB_MODE" in
     fi
 
     ENV[POSTGRES_USER]="$(prompt "PostgreSQL username" "payload")"
+    if [[ ! "${ENV[POSTGRES_USER]}" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]]; then
+      echo "PostgreSQL username must start with a letter or underscore and contain only letters, numbers, underscores, or hyphens." >&2
+      exit 1
+    fi
     ENV[POSTGRES_DB]="$(prompt "PostgreSQL database name" "payload")"
+    if [[ ! "${ENV[POSTGRES_DB]}" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]]; then
+      echo "PostgreSQL database name must start with a letter or underscore and contain only letters, numbers, underscores, or hyphens." >&2
+      exit 1
+    fi
     ENV[POSTGRES_PASSWORD]="$(prompt_secret "PostgreSQL password" "$(random_secret)")"
     ENV[REDIS_PASSWORD]="$(prompt_secret "Redis password" "$(random_secret)")"
 
@@ -212,6 +223,16 @@ case "$DB_MODE" in
       local id="$1"
       local hostname="$2"
       local ip="$3"
+      if pve_exec pct status "$id" >/dev/null 2>&1; then
+        echo "CT $id already exists." >&2
+        if confirm "Destroy the existing CT $id and recreate it?" "n"; then
+          pve_exec pct stop "$id" >/dev/null 2>&1 || true
+          pve_exec pct destroy "$id" --purge
+        else
+          echo "Keeping the existing CT; stopped before CT creation." >&2
+          exit 1
+        fi
+      fi
       pve_exec pct create "$id" "$CT_TEMPLATE" \
         --hostname "$hostname" \
         --cores 2 --memory 2048 --swap 512 \
@@ -235,11 +256,8 @@ case "$DB_MODE" in
 
     local_pg_ip="${PG_IP%%/*}"
     pg_sql_password="${ENV[POSTGRES_PASSWORD]//\'/\'\'}"
-    pve_exec pct exec "$PG_CT_ID" -- bash -c "runuser -u postgres -- psql -v ON_ERROR_STOP=1 <<'SQL'
-CREATE ROLE ${ENV[POSTGRES_USER]} WITH LOGIN PASSWORD '${pg_sql_password}' ;
-CREATE DATABASE ${ENV[POSTGRES_DB]} OWNER ${ENV[POSTGRES_USER]};
-SQL
-"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${ENV[POSTGRES_USER]}') THEN CREATE ROLE ${ENV[POSTGRES_USER]} LOGIN PASSWORD '${pg_sql_password}'; ELSE ALTER ROLE ${ENV[POSTGRES_USER]} WITH LOGIN PASSWORD '${pg_sql_password}'; END IF; END \\$\\$;\""
+    pve_exec pct exec "$PG_CT_ID" -- bash -c "if ! runuser -u postgres -- psql -tAc \\\"SELECT 1 FROM pg_database WHERE datname='${ENV[POSTGRES_DB]}'\\\" | grep -q 1; then runuser -u postgres -- createdb -O '${ENV[POSTGRES_USER]}' '${ENV[POSTGRES_DB]}'; fi"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host all ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c 'systemctl restart postgresql'
