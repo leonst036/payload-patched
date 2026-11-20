@@ -29,7 +29,6 @@ API token must already exist; see:
 |-------|---------------------|
 | Proxmox node with the `nesting=1` LXC feature available | Proxmox VE 8+ |
 | Debian 12 LXC template downloaded on the Proxmox host | `pveam download local debian-12-standard_12.7-1_amd64.tar.zst` |
-| Hack Club OIDC client ID + secret | [hackclub-oidc.md](../integrations/hackclub-oidc.md) |
 | Proxmox API token (`payload@pve!payload`) and secret | [proxmox.md](../integrations/proxmox.md) |
 | Guacamole LXC IP and `payload-admin` password | [setup-guacamole-lxc.md](./setup-guacamole-lxc.md) §5 |
 | DNS `A`/`AAAA` for `payload.hackclub.com` pointing at the public IP | Hack Club ops |
@@ -169,9 +168,6 @@ Required values:
 
 ```bash
 # ── Auth ─────────────────────────────────────────────────────────────────
-HACKCLUB_OIDC_CLIENT_ID=...
-HACKCLUB_OIDC_CLIENT_SECRET=...
-HACKCLUB_OIDC_REDIRECT_URI=https://payload.hackclub.com/api/auth/callback/hackclub
 AUTH_SECRET=...                     # openssl rand -base64 48
 
 # ── Database (compose-internal hostnames) ────────────────────────────────
@@ -397,15 +393,14 @@ Notes:
 
 - The app port (3000), Postgres (5432), and Redis (6379) are bound to
   `127.0.0.1` in compose, so UFW doesn't need rules for them.
-- Outbound to Proxmox (8006), Guacamole (8080), and Hack Club OIDC
-  (`hackclub.com`) is allowed by default-allow-out.
+- Outbound to Proxmox (8006) and Guacamole (8080) is allowed by
+  default-allow-out.
 
 ---
 
 ## 12. Smoke test the full stack
 
 1. Open `https://payload.hackclub.com` in a browser.
-2. Click **Log in** → Hack Club OIDC consent → land on dashboard.
 3. Click a **Linux** tile → wait for the provision screen.
 4. Within ~30–90s the iframe should swap in and show the XFCE desktop.
 5. Open another tab to `https://payload.hackclub.com/api/health` (if it

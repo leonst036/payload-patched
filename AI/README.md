@@ -17,7 +17,6 @@ hours** (hard cap) or **30 minutes** of browser inactivity, whichever comes firs
 3. [tech-stack.md](./tech-stack.md) — chosen technologies and version pins
 4. [domain-model.md](./domain-model.md) — Postgres schema and Drizzle models
 5. [vm-lifecycle.md](./vm-lifecycle.md) — provisioning, heartbeat, reaping
-6. [integrations/hackclub-oidc.md](./integrations/hackclub-oidc.md)
 7. [integrations/proxmox.md](./integrations/proxmox.md)
 8. [integrations/guacamole.md](./integrations/guacamole.md)
 9. [vm-templates.md](./vm-templates.md) — per-OS template prep checklist

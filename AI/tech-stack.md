@@ -13,9 +13,6 @@ All choices below are the new TypeScript baseline for Payload as of
   TypeScript, generates SQL migrations with `drizzle-kit`, and stays close to
   Postgres instead of hiding SQL behind a heavy ORM:
   <https://orm.drizzle.team/docs/migrations>.
-- **Auth.js v5** is chosen for Hack Club OIDC. It is the standard Next.js auth
-  integration point and exposes `auth()` plus route handlers that fit App Router:
-  <https://authjs.dev/>.
 - **BullMQ** is chosen by decision, even though it adds Redis. It gives mature
   retries, delayed jobs, workers, and scheduled jobs. BullMQ docs now recommend
   Job Schedulers over older repeatable-job APIs:

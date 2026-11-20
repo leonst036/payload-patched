@@ -43,9 +43,36 @@ export async function getAccessContext(): Promise<AccessContext | null> {
   const session = await auth();
   if (!session?.user) return null;
 
-  const slackId = (session.user as SessionSlackId).slackId ?? null;
   const userId = session.user.id ?? null;
-  if (!slackId || !userId) return null;
+  if (!userId) return null;
+
+  const localUser = await db.query.users.findFirst({
+    where: (users, { eq }) => eq(users.id, userId),
+  });
+
+  if (localUser?.isAdmin) {
+    const all = await db
+      .select({ id: ysws.id, slug: ysws.slug, name: ysws.name })
+      .from(ysws)
+      .where(eq(ysws.enabled, true));
+    const workspaces = all
+      .map((w) => ({ ...w, role: "admin" as const }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      userId,
+      slackId: `local:${localUser.username ?? userId}`,
+      name: localUser.name ?? localUser.username,
+      image: localUser.image,
+      isSuperadmin: true,
+      workspaces,
+      activeYsws: workspaces[0] ?? null,
+    };
+  }
+
+  const slackId = (session.user as SessionSlackId).slackId
+    ?? localUser?.slackId
+    ?? null;
+  if (!slackId) return null;
 
   const [superRow, memberRows] = await Promise.all([
     db.query.platformSuperadmins.findFirst({

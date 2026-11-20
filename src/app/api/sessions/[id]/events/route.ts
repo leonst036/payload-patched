@@ -15,7 +15,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
   }
 
-  const userId = await getSessionUserId(sessionId);
+  const userId = await getSessionUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

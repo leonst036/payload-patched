@@ -36,9 +36,7 @@ ENV GIT_SHA=$GIT_SHA
 
 # Env-var validation in src/env.ts runs at build/import time. The build only
 # needs values that exist; production secrets are injected at runtime.
-ENV HACKCLUB_OIDC_CLIENT_ID=build \
-    HACKCLUB_OIDC_CLIENT_SECRET=build \
-    AUTH_SECRET=build_build_build_build_build_build_build \
+ENV AUTH_SECRET=build_build_build_build_build_build_build \
     DATABASE_URL=postgres://build:build@build:5432/build \
     PROXMOX_HOST=build \
     PROXMOX_TOKEN_ID=build@pve!build \

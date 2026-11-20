@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Clock, ArrowLeft, AlertTriangle, Terminal, Maximize2, Minimize2, Menu, X, ClipboardPaste } from "lucide-react";
 import Link from "next/link";
-import { fromFiona, postToFiona } from "@/lib/embed-messages";
 
 type SessionClientProps = {
   sessionId: number;
@@ -13,8 +12,6 @@ type SessionClientProps = {
   // null while a session is queued/warming (TTL clock starts at claim, ADR-0033).
   expiresAt: string | null;
   terminationReason?: string;
-  // inside fiona's window (ADR-0039)
-  embedOrigins?: string[];
 };
 
 // Status labels for hover tooltips
@@ -35,11 +32,8 @@ export default function SessionClient({
   vmIcon,
   expiresAt: initialExpiresAt,
   terminationReason,
-  embedOrigins,
 }: SessionClientProps) {
-  const embedded = embedOrigins !== undefined;
   const [state, setState] = useState(initialState);
-  const [revoked, setRevoked] = useState(terminationReason === "revoked");
   // Server-rendered value is null while provisioning (TTL starts at claim);
   // SSE delivers the real expiry when the session becomes ready.
   const [expiresAt, setExpiresAt] = useState(initialExpiresAt);
@@ -52,7 +46,10 @@ export default function SessionClient({
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const showDestroyConfirmRef = useRef(showDestroyConfirm);
-  showDestroyConfirmRef.current = showDestroyConfirm;
+
+  useEffect(() => {
+    showDestroyConfirmRef.current = showDestroyConfirm;
+  }, [showDestroyConfirm]);
 
   // -------------------------------------------------------------------
   // Firefox "Paste" menu suppression.
@@ -221,9 +218,6 @@ export default function SessionClient({
         if (typeof data.data?.expiresAt === "string") {
           setExpiresAt(data.data.expiresAt);
         }
-        if (data.data?.reason === "revoked") {
-          setRevoked(true);
-        }
         if (data.type === "terminated" || data.type === "errored" || data.state === "terminated" || data.state === "errored") {
           eventSource.close();
         }
@@ -242,19 +236,6 @@ export default function SessionClient({
       eventSource.close();
     };
   }, [sessionId]);
-
-  useEffect(() => {
-    if (embedOrigins) postToFiona(embedOrigins, { sessionId, state, expiresAt });
-  }, [embedOrigins, sessionId, state, expiresAt]);
-
-  useEffect(() => {
-    if (!embedOrigins) return;
-    const onMessage = (event: MessageEvent) => {
-      if (fromFiona(event, embedOrigins)?.type === "focus") focusIframe();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [embedOrigins, focusIframe]);
 
   // Iframe token fetch - triggered by SSE state changes
   const iframeFetchedRef = useRef(false);
@@ -436,26 +417,6 @@ export default function SessionClient({
   const isEnded = ["terminated", "errored"].includes(state);
   const isActive = ["ready", "active"].includes(state);
 
-  if (isEnded && embedded) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black px-4">
-        <div className="max-w-sm text-center">
-          <AlertTriangle className="w-10 h-10 text-hc-red mx-auto mb-4" />
-          <p className="text-lg font-bold text-hc-snow mb-2">This VM has ended</p>
-          <p className="text-hc-muted">
-            {revoked
-              ? "Your Payload access was revoked, so it was stopped."
-              : state === "errored"
-                ? "It ran into an error and couldn't continue."
-                : terminationReason
-                  ? `It was ended: ${terminationReason}`
-                  : "You can close this window."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   if (isEnded) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4">
@@ -519,7 +480,6 @@ export default function SessionClient({
         className={`absolute left-1/2 -translate-x-1/2 z-50 transition-all duration-500 ease-in-out flex flex-col items-center top-4 select-none ${isUiVisible ? 'translate-y-0 opacity-100 visible' : '-translate-y-24 opacity-0 invisible'}`}
       >
         <div className={`flex items-center gap-4 bg-hc-dark/80 backdrop-blur-md border border-hc-darkless/50 shadow-2xl rounded-full px-4 py-2`}>
-          {!embedded && (
             <>
               <Link href="/" className="text-hc-muted hover:text-hc-smoke rounded-full transition-colors p-1" title="Back to Dashboard">
                 <ArrowLeft className="w-5 h-5" />
@@ -540,7 +500,6 @@ export default function SessionClient({
 
               <div className="w-px h-5 bg-hc-darkless/50 ml-2"></div>
             </>
-          )}
 
           <button
             onClick={sendClipboardToVm}
@@ -576,14 +535,12 @@ export default function SessionClient({
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
-          {!embedded && (
             <button
               onClick={() => setShowDestroyConfirm(true)}
               className="bg-transparent hover:bg-hc-red/10 text-hc-muted hover:text-hc-red transition-colors px-3 py-1 rounded-full text-xs font-bold ml-1"
             >
               Destroy
             </button>
-          )}
         </div>
       </div>
 

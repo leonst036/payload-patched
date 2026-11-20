@@ -26,7 +26,6 @@ enabled as a fourth type (ADR-0031, `expensive`, clipboard unsupported).
 
 ### Milestone 1 — App skeleton
 
-- [x] Auth.js Hack Club OIDC login works end to end
 - [x] `users` and `reviewer_allowlist_entries` tables migrated with Drizzle
 - [x] Allowlist gate for every server action / route handler touching VMs
 - [x] Empty dashboard renders for allowlisted user

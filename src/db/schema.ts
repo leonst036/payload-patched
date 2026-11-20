@@ -19,6 +19,9 @@ export const users = pgTable("user", {
   emailVerified: timestamp("emailVerified", { mode: "date" }),
   image: text("image"),
   slackId: text("slack_id"),
+  username: text("username").unique(),
+  passwordHash: text("password_hash"),
+  isAdmin: boolean("is_admin").notNull().default(false),
   // Per-reviewer customization, applied to every VM they launch in the
   // background after bind (see customize-vm job). All null/empty = template
   // default. See ADR-0035.

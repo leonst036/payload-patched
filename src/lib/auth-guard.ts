@@ -1,5 +1,4 @@
 import { getAccessContext, type AccessContext } from "@/lib/access";
-import { embedUserId } from "@/lib/fiona";
 
 /**
  * Gate for anything a reviewer does with VMs. A user may use Payload iff they
@@ -23,9 +22,8 @@ export async function getAllowlistedUser() {
 
 export type AllowlistedUser = NonNullable<Awaited<ReturnType<typeof getAllowlistedUser>>>;
 
-// fiona's embed cookie for this VM, or a signed-in member; callers still check the VM is theirs
-export async function getSessionUserId(sessionId: number): Promise<string | null> {
-  return (await embedUserId(sessionId)) ?? (await getAllowlistedUser())?.userId ?? null;
+export async function getSessionUserId(): Promise<string | null> {
+  return (await getAllowlistedUser())?.userId ?? null;
 }
 
 export type { AccessContext };

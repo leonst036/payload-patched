@@ -12,10 +12,6 @@ function booleanFromEnv(defaultValue: boolean) {
 }
 
 const envSchema = z.object({
-  // Auth
-  HACKCLUB_OIDC_CLIENT_ID: z.string().min(1),
-  HACKCLUB_OIDC_CLIENT_SECRET: z.string().min(1),
-  HACKCLUB_OIDC_REDIRECT_URI: z.string().url().optional(),
   AUTH_SECRET: z.string().min(1),
 
   // Database
@@ -114,9 +110,6 @@ const envSchema = z.object({
   // Reject cloned repos larger than this (checkout size, not history).
   REPO_MAX_CLONE_MB: z.coerce.number().int().positive().default(350),
 
-  // fiona (ADR-0039). FIONA_API_KEY unset turns /api/fiona off.
-  FIONA_API_KEY: z.string().min(32).optional(),
-  FIONA_WORKSPACE: z.string().min(1).default("shipwrights"),
 });
 
 const parsed = envSchema.safeParse(process.env);

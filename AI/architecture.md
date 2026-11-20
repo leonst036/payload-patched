@@ -11,7 +11,7 @@ Browser (Reviewer)
          │ HTTPS + WSS
          ▼
   ┌─────────────────────────────┐
-  │ Next.js app (Payload)       │ ◄── Hack Club OIDC login
+  │ Next.js app (Payload)       │
   │ • App Router pages/actions  │
   │ • Route handlers / API      │     REST calls to Proxmox + Guacamole
   │ • In-process BullMQ worker  │     BullMQ jobs via Redis

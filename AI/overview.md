@@ -34,7 +34,6 @@ system health, and can act in or see across every workspace.
 
 ## What's in v1
 
-- Hack Club OIDC login + workspace-membership gate (ADR-0036)
 - Spawn a **Linux**, **Windows**, **Android**, or **macOS** desktop VM
   (ADR-0024 + ADR-0031):
   - Linux: Debian 12 + XFCE over RDP/xrdp

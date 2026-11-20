@@ -1,8 +1,8 @@
 import { auth, signIn, signOut } from "@/auth";
 import { db } from "@/db";
-import { vmSessions, vmTypes, repoSetups } from "@/db/schema";
+import { vmSessions, vmTypes, repoSetups, users } from "@/db/schema";
 import { getAccessContext } from "@/lib/access";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import Link from "next/link";
 import { vmTypeSeeds } from "@/config/vm-types";
 import DashboardLive from "./DashboardLive";
@@ -14,6 +14,7 @@ import RepoReviewForm from "@/components/RepoReviewForm";
 import RepoSetupsPanel, { type RepoSetupView } from "@/components/RepoSetupsPanel";
 import { MAX_REPO_SETUP_HISTORY } from "@/lib/repo-setup/history";
 import { destroySession } from "./page-actions";
+import { hashPassword } from "@/lib/password";
 
 type UserWithSlackId = {
   slackId?: string | null;
@@ -60,20 +61,97 @@ export default async function Dashboard() {
             Payload
           </h1>
           <p className="text-lg md:text-xl text-hc-smoke max-w-xl mx-auto leading-relaxed">
-            Windows, macOS, Linux and Android VMs for Hack Club reviewers. Sign in with your Hack Club account to get started.
+            Windows, macOS, Linux and Android VMs for Hack Club reviewers.
           </p>
           <div className="flex flex-col items-center gap-4 pt-6">
-            <form
-              className="w-full max-w-sm"
-              action={async () => {
-                "use server";
-                await signIn("hackclub", { redirectTo: "/" });
-              }}
-            >
-              <button type="submit" className="bg-hc-red hover:bg-[#d82a41] text-white font-bold py-3.5 px-8 rounded-hc w-full text-lg transition-all shadow hover:shadow-hc-red/20 hover:-translate-y-0.5">
-                Sign in with Hack Club
-              </button>
-            </form>
+            <div className="w-full max-w-sm space-y-4">
+              <form
+                className="space-y-3"
+                action={async (formData: FormData) => {
+                  "use server";
+                  await signIn("credentials", {
+                    username: String(formData.get("username") ?? "").trim(),
+                    password: String(formData.get("password") ?? ""),
+                    redirectTo: "/",
+                  });
+                }}
+              >
+                <input
+                  name="username"
+                  required
+                  autoComplete="username"
+                  placeholder="Username"
+                  className="w-full rounded-hc border border-hc-slate/30 bg-hc-dark px-4 py-3 text-hc-snow"
+                />
+                <input
+                  name="password"
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Password"
+                  className="w-full rounded-hc border border-hc-slate/30 bg-hc-dark px-4 py-3 text-hc-snow"
+                />
+                <button type="submit" className="bg-hc-red hover:bg-[#d82a41] text-white font-bold py-3.5 px-8 rounded-hc w-full text-lg transition-all shadow hover:shadow-hc-red/20 hover:-translate-y-0.5">
+                  Sign in
+                </button>
+              </form>
+
+              <details className="rounded-hc border border-hc-darkless bg-hc-dark/50 p-4 text-left">
+                <summary className="cursor-pointer font-bold text-hc-smoke">Create first account</summary>
+                <form
+                  className="mt-4 space-y-3"
+                  action={async (formData: FormData) => {
+                    "use server";
+                    const username = String(formData.get("username") ?? "").trim().toLowerCase();
+                    const password = String(formData.get("password") ?? "");
+                    if (!/^[a-z0-9_-]{3,32}$/.test(username)) {
+                      throw new Error("Username must be 3-32 characters and contain only letters, numbers, underscores, or hyphens.");
+                    }
+                    if (password.length < 12) {
+                      throw new Error("Password must be at least 12 characters.");
+                    }
+
+                    const existing = await db.query.users.findFirst({
+                      where: eq(users.username, username),
+                    });
+                    if (existing) throw new Error("Username is already in use.");
+
+                    const firstLocalUser = await db.query.users.findFirst({
+                      where: isNotNull(users.username),
+                    });
+                    const passwordHash = await hashPassword(password);
+                    await db.insert(users).values({
+                      name: username,
+                      username,
+                      passwordHash,
+                      isAdmin: !firstLocalUser,
+                    });
+
+                    await signIn("credentials", { username, password, redirectTo: "/" });
+                  }}
+                >
+                  <input
+                    name="username"
+                    required
+                    autoComplete="username"
+                    placeholder="Username"
+                    className="w-full rounded-hc border border-hc-slate/30 bg-hc-dark px-4 py-3 text-hc-snow"
+                  />
+                  <input
+                    name="password"
+                    required
+                    type="password"
+                    minLength={12}
+                    autoComplete="new-password"
+                    placeholder="Password (12+ characters)"
+                    className="w-full rounded-hc border border-hc-slate/30 bg-hc-dark px-4 py-3 text-hc-snow"
+                  />
+                  <button type="submit" className="w-full rounded-hc border border-hc-red/50 py-3 font-bold text-hc-red hover:bg-hc-red/10">
+                    Create account
+                  </button>
+                </form>
+              </details>
+            </div>
           </div>
         </div>
         <Footer />
@@ -82,44 +160,6 @@ export default async function Dashboard() {
   }
 
   const slackId = (session.user as typeof session.user & UserWithSlackId).slackId;
-  if (!slackId) {
-    return (
-      <div className="fixed inset-0 z-50 bg-hc-darker flex flex-col items-center justify-center px-4 py-8 animate-in fade-in duration-500 overflow-hidden">
-        {/* Technical Blueprint/Radar Grid Background */}
-        <div 
-          className="absolute inset-0 pointer-events-none z-0" 
-          style={{
-            backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-            backgroundPosition: "center center",
-            maskImage: "radial-gradient(ellipse 80% 80% at 50% 50%, black 10%, transparent 100%)",
-            WebkitMaskImage: "radial-gradient(ellipse 80% 80% at 50% 50%, black 10%, transparent 100%)"
-          }}
-        />
-
-        <div className="max-w-2xl w-full text-center space-y-6 relative z-10 flex flex-col items-center">
-          <h1 className="text-5xl md:text-7xl font-black text-hc-snow uppercase tracking-tight drop-shadow-sm">
-            Payload
-          </h1>
-          
-          <div className="bg-hc-dark border border-hc-red/50 rounded-hc p-8 max-w-xl shadow-lg w-full text-left">
-            <div className="flex flex-col gap-2">
-              <h3 className="text-xl font-bold text-hc-red mb-1">Configuration Error</h3>
-              <p className="text-hc-smoke">No Slack ID associated with your Hack Club Auth profile.</p>
-              <div className="mt-4 pt-4 border-t border-hc-darkless">
-                <form action={async () => { "use server"; await signOut(); }}>
-                  <button className="bg-hc-darkless hover:bg-hc-slate text-hc-smoke border border-hc-slate/30 font-bold py-2 px-4 rounded transition-colors text-sm w-full">Sign out</button>
-                </form>
-              </div>
-            </div>
-          </div>
-          
-          <Footer />
-        </div>
-      </div>
-    );
-  }
-
   const access = await getAccessContext();
 
   if (!access?.activeYsws) {
@@ -159,7 +199,10 @@ export default async function Dashboard() {
             <div className="bg-hc-dark border border-hc-orange/50 rounded-hc p-8 max-w-xl shadow-lg w-full text-left">
               <div className="flex flex-col gap-2">
                 <h3 className="text-xl font-bold text-hc-orange mb-1">Access Denied</h3>
-                <p className="text-hc-smoke">Your account is valid but your Slack ID (<code className="bg-hc-darker px-1.5 py-0.5 rounded border border-hc-darkless text-hc-cyan">{slackId}</code>) is not a member of any workspace on this platform.</p>
+                <p className="text-hc-smoke">
+                  Your account is valid but it is not a member of any workspace on this platform.
+                  {slackId ? <> Slack ID: <code className="bg-hc-darker px-1.5 py-0.5 rounded border border-hc-darkless text-hc-cyan">{slackId}</code></> : null}
+                </p>
                 <p className="text-sm text-hc-muted mt-1">
                   Ask your program organizer to add you, or <a href={env.SLACK_REQUEST_URL} target="_blank" rel="noopener noreferrer" className="text-hc-cyan hover:underline decoration-hc-cyan/50 underline-offset-4 transition-all">request access in Slack</a>.
                 </p>
