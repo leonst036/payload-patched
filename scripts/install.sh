@@ -111,25 +111,73 @@ case "$DB_MODE" in
     ENV[PROXMOX_DEFAULT_NODE]="$(prompt_required "Proxmox default node")"
     ENV[PROXMOX_VERIFY_TLS]="$(prompt "PROXMOX_VERIFY_TLS" "true")"
     ENV[VM_NAME_PREFIX]="$(prompt "VM_NAME_PREFIX" "payload")"
-    ENV[PROXMOX_SSH_HOST]="$(prompt "PROXMOX_SSH_HOST" "${ENV[PROXMOX_HOST]}")"
-    ENV[PROXMOX_SSH_USER]="$(prompt "PROXMOX_SSH_USER" "root")"
-    ENV[PROXMOX_SSH_KEY_PATH]="$(prompt "PROXMOX_SSH_KEY_PATH (leave blank for password auth)" "")"
-    ENV[PROXMOX_SSH_PASSWORD]="$(prompt_secret "PROXMOX_SSH_PASSWORD (leave blank for key auth)" "")"
-    ENV[PROXMOX_SSH_PORT]="$(prompt "PROXMOX_SSH_PORT" "22")"
+
+    PVE_ACCESS_MODE="2"
+    if command -v pct >/dev/null 2>&1 && command -v pveversion >/dev/null 2>&1; then
+      PVE_ACCESS_MODE="1"
+    fi
+    PVE_ACCESS_MODE="$(prompt "Proxmox access method (1=local pct, 2=SSH)" "$PVE_ACCESS_MODE")"
+
+    case "$PVE_ACCESS_MODE" in
+      1)
+        if ! command -v pct >/dev/null 2>&1 || ! command -v pveversion >/dev/null 2>&1; then
+          echo "Local pct mode requires this installer to run on the Proxmox host." >&2
+          exit 1
+        fi
+        ENV[PROXMOX_SSH_HOST]=""
+        ENV[PROXMOX_SSH_USER]=""
+        ENV[PROXMOX_SSH_KEY_PATH]=""
+        ENV[PROXMOX_SSH_PASSWORD]=""
+        ENV[PROXMOX_SSH_PORT]="22"
+        ;;
+      2)
+        ENV[PROXMOX_SSH_HOST]="$(prompt "PROXMOX_SSH_HOST" "${ENV[PROXMOX_HOST]}")"
+        ENV[PROXMOX_SSH_USER]="$(prompt "PROXMOX_SSH_USER" "root")"
+        ENV[PROXMOX_SSH_PORT]="$(prompt "PROXMOX_SSH_PORT" "22")"
+        SSH_AUTH_METHOD="$(prompt "SSH authentication (1=private key, 2=password)" "1")"
+        case "$SSH_AUTH_METHOD" in
+          1)
+            ENV[PROXMOX_SSH_KEY_PATH]="$(prompt_required "Path to SSH private key")"
+            ENV[PROXMOX_SSH_PASSWORD]=""
+            ;;
+          2)
+            ENV[PROXMOX_SSH_KEY_PATH]=""
+            ENV[PROXMOX_SSH_PASSWORD]="$(prompt_secret "PROXMOX_SSH_PASSWORD")"
+            if [[ -z "${ENV[PROXMOX_SSH_PASSWORD]}" ]]; then
+              echo "Proxmox SSH password cannot be blank." >&2
+              exit 1
+            fi
+            if ! command -v sshpass >/dev/null 2>&1; then
+              echo "sshpass is required for password authentication. Install it with: apt-get install -y sshpass" >&2
+              exit 1
+            fi
+            ;;
+          *)
+            echo "Invalid SSH authentication method." >&2
+            exit 1
+            ;;
+        esac
+        ;;
+      *)
+        echo "Invalid Proxmox access method." >&2
+        exit 1
+        ;;
+    esac
 
     pve_exec() {
-      local ssh_args=(-p "${ENV[PROXMOX_SSH_PORT]}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+      if [[ "$PVE_ACCESS_MODE" == "1" ]]; then
+        "$@"
+        return
+      fi
+      local ssh_args=(-p "${ENV[PROXMOX_SSH_PORT]}" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
       if [[ -n "${ENV[PROXMOX_SSH_KEY_PATH]}" ]]; then
         ssh_args+=(-i "${ENV[PROXMOX_SSH_KEY_PATH]}")
         ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
       elif [[ -n "${ENV[PROXMOX_SSH_PASSWORD]}" ]]; then
-        if ! command -v sshpass >/dev/null 2>&1; then
-          echo "sshpass is required for Proxmox SSH password authentication." >&2
-          exit 1
-        fi
         sshpass -p "${ENV[PROXMOX_SSH_PASSWORD]}" ssh -p "${ENV[PROXMOX_SSH_PORT]}" -o StrictHostKeyChecking=accept-new "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
       else
-        ssh "${ssh_args[@]}" "${ENV[PROXMOX_SSH_USER]}@${ENV[PROXMOX_SSH_HOST]}" "$@"
+        echo "No Proxmox SSH authentication method is configured." >&2
+        return 1
       fi
     }
 
