@@ -50,6 +50,20 @@ Ephemeral desktop VMs for Hack Club project reviewers. Reviewers log in, spin up
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### Interactive installer
+
+Run the installer to configure all required environment variables and choose where PostgreSQL and Redis run:
+
+```bash
+bash scripts/install.sh
+```
+
+The installer can:
+
+- Run PostgreSQL and Redis in Docker on the current VM
+- Create separate PostgreSQL and Redis Proxmox LXCs
+- Use existing external PostgreSQL and Redis servers
+
 The first local account you register becomes the platform administrator. Register once through the sign-in page, then use the Admin panel to create workspaces and manage access.
 
 ## Scripts
