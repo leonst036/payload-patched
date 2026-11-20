@@ -298,7 +298,7 @@ SQL
 )
     pg_setup_b64="$(printf '%s' "$pg_setup_sql" | base64 | tr -d '\n')"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo '$pg_setup_b64' | base64 -d | runuser -u postgres -- psql -v ON_ERROR_STOP=1"
-    pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i \"s/^#*listen_addresses.*/listen_addresses = '\\''*'\\''/\" /etc/postgresql/*/main/postgresql.conf"
+    pve_exec pct exec "$PG_CT_ID" -- bash -c 'sed -i "s/^#*[[:space:]]*listen_addresses.*/listen_addresses = '\''*'\''/" /etc/postgresql/*/main/postgresql.conf'
     pve_exec pct exec "$PG_CT_ID" -- bash -c "sed -i '/^host .*${ENV[POSTGRES_USER]} /d' /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c "echo 'host ${ENV[POSTGRES_DB]} ${ENV[POSTGRES_USER]} 0.0.0.0/0 scram-sha-256' >> /etc/postgresql/*/main/pg_hba.conf"
     pve_exec pct exec "$PG_CT_ID" -- bash -c 'pg_ctlcluster 17 main reload || pg_ctlcluster 17 main restart'
