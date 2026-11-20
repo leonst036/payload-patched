@@ -409,7 +409,41 @@ EOF
 fi
 
 if confirm "Install pnpm dependencies?" "y"; then
-  corepack enable
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is required but was not found."
+    if command -v apt-get >/dev/null 2>&1; then
+      if confirm "Install Node.js 20 and Corepack with apt?" "y"; then
+        apt-get update
+        apt-get install -y curl ca-certificates
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt-get install -y nodejs
+      else
+        echo "Install Node.js 20, then rerun the installer." >&2
+        exit 1
+      fi
+    else
+      echo "Install Node.js 20, then rerun the installer." >&2
+      exit 1
+    fi
+  fi
+
+  if command -v corepack >/dev/null 2>&1; then
+    corepack enable
+    corepack prepare pnpm@9.15.0 --activate
+  elif command -v npm >/dev/null 2>&1; then
+    npm install --global pnpm@9.15.0
+  else
+    echo "Corepack/npm is unavailable. Install Node.js with Corepack." >&2
+    exit 1
+  fi
+
+  hash -r
+  command -v pnpm >/dev/null 2>&1 || export PATH="/usr/local/bin:/usr/bin:$PATH"
+  hash -r
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "pnpm was installed but is not available in PATH." >&2
+    exit 1
+  fi
   pnpm install --frozen-lockfile
 fi
 
