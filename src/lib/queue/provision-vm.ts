@@ -249,6 +249,9 @@ async function runBindPhase(sessionId: number) {
   try {
     status = await proxmox.getVmStatus(node, vmid);
   } catch (error) {
+    if (error instanceof Error && /does not exist|could not find|not found/i.test(error.message)) {
+      await discardVm(sessionId, "warm_vm_missing");
+    }
     throw new WarmVmUnhealthyError(
       `Could not read status of VM ${vmid}: ${error instanceof Error ? error.message : String(error)}`,
     );
