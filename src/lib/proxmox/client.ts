@@ -183,6 +183,34 @@ export class ProxmoxClient {
     return this.request<Record<string, unknown>>(`/nodes/${node}/qemu/${vmid}/config`);
   }
 
+  async getGuestNetworkInterfaces(
+    node: string,
+    vmid: number,
+  ): Promise<{
+    result?: Array<{
+      name?: string;
+      "hardware-address"?: string;
+      "ip-addresses"?: Array<{
+        "ip-address"?: string;
+        "ip-address-type"?: string;
+      }>;
+    }>;
+  }> {
+    return this.request<{
+      result?: Array<{
+        name?: string;
+        "hardware-address"?: string;
+        "ip-addresses"?: Array<{
+          "ip-address"?: string;
+          "ip-address-type"?: string;
+        }>;
+      }>;
+    }>(`/nodes/${node}/qemu/${vmid}/agent/network-get-interfaces`, {
+      method: "GET",
+      retry: false,
+    });
+  }
+
   // --- QEMU guest-agent passthrough (used for in-guest customization, e.g.
   // wallpaper). Requires the template to have qemu-guest-agent installed and
   // `agent: 1` set — verified true for linux/windows/macos templates. ---

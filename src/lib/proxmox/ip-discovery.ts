@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
 import { sleep } from "./client";
 import type { ProxmoxConfig } from "./config";
+import { createProxmoxClient } from "./config";
 
 export type IpDiscoveryInput = {
   macAddress: string;
   timeoutMs?: number;
   intervalMs?: number;
   config: ProxmoxConfig;
+  node?: string;
+  vmid?: number;
 };
 
 export async function discoverIpFromProxmoxNeighborTable(input: IpDiscoveryInput) {
@@ -15,6 +18,28 @@ export async function discoverIpFromProxmoxNeighborTable(input: IpDiscoveryInput
   const macAddress = input.macAddress.toLowerCase();
 
   while (Date.now() < timeoutAt) {
+    if (input.node && input.vmid) {
+      try {
+        const proxmox = createProxmoxClient(input.config);
+        const guestInterfaces = await proxmox.getGuestNetworkInterfaces(input.node, input.vmid);
+        for (const iface of guestInterfaces.result ?? []) {
+          if (
+            iface["hardware-address"] &&
+            iface["hardware-address"].toLowerCase() !== macAddress
+          ) {
+            continue;
+          }
+          for (const address of iface["ip-addresses"] ?? []) {
+            if (address["ip-address-type"] === "ipv4" && isUsableIpv4(address["ip-address"])) {
+              return address["ip-address"]!;
+            }
+          }
+        }
+      } catch {
+        // Guest-agent discovery may not be ready on first boot.
+      }
+    }
+
     const neighbors = await readNeighborTable(input.config);
     const match = findIpForMac(neighbors, macAddress);
     if (match) {

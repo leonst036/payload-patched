@@ -190,6 +190,8 @@ async function runWarmPhase(sessionId: number) {
     macAddress,
     config: proxmoxConfig,
     timeoutMs: IP_DISCOVERY_TIMEOUT_MS,
+    node: vmType.proxmoxNode,
+    vmid: newVmid,
   });
 
   await db
