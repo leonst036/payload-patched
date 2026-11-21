@@ -14,7 +14,7 @@ export const vmTypeSeeds = [
         password: "shipwrights",
         iconUrl:
             "https://cdn.hackclub.com/019e129d-bd95-7d3f-b952-eaffec41afc3/devicon--debian.png",
-        bootDelayMs: 1000,
+        bootDelayMs: 70000,
         expensive: false,
         memoryMb: 4096,
         warmPoolSize: 2,
