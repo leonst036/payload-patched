@@ -31,7 +31,10 @@ export async function discoverIpFromProxmoxNeighborTable(input: IpDiscoveryInput
           }
           for (const address of iface["ip-addresses"] ?? []) {
             if (address["ip-address-type"] === "ipv4" && isUsableIpv4(address["ip-address"])) {
-              return address["ip-address"]!;
+              const ip = address["ip-address"]!;
+              if (!isKnownHostAddress(ip, input.config)) {
+                return ip;
+              }
             }
           }
         }
@@ -128,4 +131,9 @@ function run(command: string, args: string[], env?: Record<string, string>) {
 
 function isUsableIpv4(ip: string | undefined) {
   return Boolean(ip && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) && !ip.startsWith("127."));
+}
+
+function isKnownHostAddress(ip: string, config: ProxmoxConfig): boolean {
+  if (ip === config.host || ip === config.sshHost) return true;
+  return false;
 }
