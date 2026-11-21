@@ -35,7 +35,7 @@ export const vmTypeSeeds = [
         bootDelayMs: 1000,
         expensive: false,
         memoryMb: 8192,
-        warmPoolSize: 2,
+        warmPoolSize: 0,
     },
     {
         slug: "android",
@@ -55,7 +55,7 @@ export const vmTypeSeeds = [
         bootDelayMs: 6000,
         expensive: false,
         memoryMb: 4096,
-        warmPoolSize: 1,
+        warmPoolSize: 0,
     },
     {
         slug: "macos",
